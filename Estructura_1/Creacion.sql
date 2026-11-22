@@ -1,11 +1,13 @@
--- ========================================================================
--- ESTRUCTURA Y RESTRICCIONES DECLARATIVAS: PROYECTO MILITAR_DB
--- ========================================================================
+-- ESTRUCTURA, RESTRICCIONES DECLARATIVAS, ÍNDICES Y VISTAS: PROYECTO MILITAR_DB
+-- XTablas, XVistas e XIndices: Limpieza previa
 
--- ------------------------------------------------------------------------
--- XTablas: Limpieza previa
--- (Se ejecuta en orden inverso a las dependencias para evitar errores)
--- ------------------------------------------------------------------------
+DROP VIEW IF EXISTS INFO_MISIONES_ACTIVAS;
+DROP VIEW IF EXISTS INFO_ARMAMENTO_ACTIVO;
+DROP VIEW IF EXISTS INFO_SOLDADOS_ACTIVOS;
+
+DROP INDEX IF EXISTS INDX_NUMERO_SERIE;
+DROP INDEX IF EXISTS INDX_ESTADO_SALUD;
+
 DROP TABLE IF EXISTS Asignacion_Mision CASCADE;
 DROP TABLE IF EXISTS Mision CASCADE;
 DROP TABLE IF EXISTS Municion CASCADE;
@@ -22,9 +24,7 @@ DROP TABLE IF EXISTS Vehiculo CASCADE;
 DROP TABLE IF EXISTS Batallon CASCADE;
 DROP TABLE IF EXISTS Base_Militar CASCADE;
 
--- ------------------------------------------------------------------------
 -- Tablas (Estructura y Dominios base con restricciones de Nulidad)
--- ------------------------------------------------------------------------
 
 CREATE TABLE Base_Militar (
     id_base         INTEGER       NOT NULL,
@@ -133,27 +133,31 @@ CREATE TABLE Asignacion_Mision (
     id_soldado    INTEGER      NOT NULL
 );
 
--- ------------------------------------------------------------------------
 -- Atributos (Restricciones Declarativas de Dominio y Lógica)
--- ------------------------------------------------------------------------
 
 -- Validaciones de longitud mínima para cadenas obligatorias
 ALTER TABLE Base_Militar ADD CONSTRAINT CK_BaseMilitar_nombre CHECK (LENGTH(TRIM(nombre_base)) > 0);
-ALTER TABLE Batallon ADD CONSTRAINT CK_Batallon_nombre CHECK (LENGTH(TRIM(nombre_batallon)) > 0);
-ALTER TABLE Soldado ADD CONSTRAINT CK_Soldado_nombres CHECK (LENGTH(TRIM(nombres_apellidos)) > 0);
-ALTER TABLE Mision ADD CONSTRAINT CK_Mision_nombre CHECK (LENGTH(TRIM(nombre_mision)) > 0);
+ALTER TABLE Batallon     ADD CONSTRAINT CK_Batallon_nombre    CHECK (LENGTH(TRIM(nombre_batallon)) > 0);
+ALTER TABLE Soldado      ADD CONSTRAINT CK_Soldado_nombres    CHECK (LENGTH(TRIM(nombres_apellidos)) > 0);
+ALTER TABLE Mision       ADD CONSTRAINT CK_Mision_nombre      CHECK (LENGTH(TRIM(nombre_mision)) > 0);
 
 -- Validaciones numéricas (Positivos)
-ALTER TABLE Rango ADD CONSTRAINT CK_Rango_sueldo CHECK (sueldo_base >= 0);
-ALTER TABLE Especialidad ADD CONSTRAINT CK_Especialidad_bono CHECK (bono_salarial >= 0);
-ALTER TABLE Arma_Fuego ADD CONSTRAINT CK_ArmaFuego_capacidad CHECK (capacidad_cargador > 0);
-ALTER TABLE Arma_Fuego ADD CONSTRAINT CK_ArmaFuego_peso CHECK (peso_vacia_kg > 0);
-ALTER TABLE Explosivo ADD CONSTRAINT CK_Explosivo_peso CHECK (peso_kg > 0);
-ALTER TABLE Municion ADD CONSTRAINT CK_Municion_cantidad CHECK (cantidad_disponible >= 0);
+ALTER TABLE Rango        ADD CONSTRAINT CK_Rango_sueldo          CHECK (sueldo_base >= 0);
+ALTER TABLE Especialidad ADD CONSTRAINT CK_Especialidad_bono     CHECK (bono_salarial >= 0);
+ALTER TABLE Arma_Fuego   ADD CONSTRAINT CK_ArmaFuego_capacidad   CHECK (capacidad_cargador > 0);
+ALTER TABLE Arma_Fuego   ADD CONSTRAINT CK_ArmaFuego_peso        CHECK (peso_vacia_kg > 0);
+ALTER TABLE Explosivo    ADD CONSTRAINT CK_Explosivo_peso        CHECK (peso_kg > 0);
+ALTER TABLE Municion     ADD CONSTRAINT CK_Municion_cantidad     CHECK (cantidad_disponible >= 0);
 
--- ------------------------------------------------------------------------
--- Primarias
--- ------------------------------------------------------------------------
+-- Validaciones de dominio (Valores permitidos)
+ALTER TABLE Historial_Medico  ADD CONSTRAINT CK_Historial_tipo_sangre  CHECK (tipo_sangre IN ('O+', 'O-', 'A+', 'A-', 'B+', 'B-', 'AB+', 'AB-'));
+ALTER TABLE Historial_Medico  ADD CONSTRAINT CK_Historial_estado_salud CHECK (estado_salud IN ('Optimo', 'Herido', 'En Recuperacion', 'Baja Medica', 'Fallecido'));
+ALTER TABLE Armamento         ADD CONSTRAINT CK_Armamento_estado       CHECK (estado_arma IN ('Operativa', 'En Mantenimiento', 'Dañada'));
+ALTER TABLE Mision            ADD CONSTRAINT CK_Mision_estado          CHECK (estado_mision IN ('Planificacion', 'En Progreso', 'Completada', 'Abortada'));
+ALTER TABLE Asignacion_Mision ADD CONSTRAINT CK_Asignacion_rol         CHECK (rol_asignado IN ('Asalto', 'Francotirador', 'Medico', 'Ingeniero', 'Apoyo'));
+
+-- Primarias(PK's)
+
 ALTER TABLE Base_Militar      ADD CONSTRAINT PK_Base_Militar      PRIMARY KEY (id_base);
 ALTER TABLE Batallon          ADD CONSTRAINT PK_Batallon          PRIMARY KEY (id_batallon);
 ALTER TABLE Vehiculo          ADD CONSTRAINT PK_Vehiculo          PRIMARY KEY (id_vehiculo);
@@ -170,15 +174,13 @@ ALTER TABLE Municion          ADD CONSTRAINT PK_Municion          PRIMARY KEY (i
 ALTER TABLE Mision            ADD CONSTRAINT PK_Mision            PRIMARY KEY (id_mision);
 ALTER TABLE Asignacion_Mision ADD CONSTRAINT PK_Asignacion_Mision PRIMARY KEY (id_asignacion);
 
--- ------------------------------------------------------------------------
--- Unicas
--- ------------------------------------------------------------------------
+-- Unicas(UK's)
 ALTER TABLE Vehiculo          ADD CONSTRAINT UK_Vehiculo_placa    UNIQUE (placa_identificacion);
 ALTER TABLE Armamento         ADD CONSTRAINT UK_Armamento_serie   UNIQUE (numero_serie);
 
--- ------------------------------------------------------------------------
--- Foraneas
--- ------------------------------------------------------------------------
+
+-- Foraneas(FK's)
+
 ALTER TABLE Batallon
     ADD CONSTRAINT FK_Batallon_Base
     FOREIGN KEY (id_base) REFERENCES Base_Militar (id_base);
@@ -238,3 +240,40 @@ ALTER TABLE Asignacion_Mision
 ALTER TABLE Asignacion_Mision
     ADD CONSTRAINT FK_Asignacion_Soldado
     FOREIGN KEY (id_soldado) REFERENCES Soldado (id_soldado);
+
+
+-- Indices (Optimización de búsquedas)
+
+CREATE INDEX INDX_ESTADO_SALUD ON Historial_Medico (estado_salud);
+CREATE INDEX INDX_NUMERO_SERIE ON Armamento (numero_serie);
+
+
+-- Vistas (Reportes operativos)
+
+CREATE OR REPLACE VIEW INFO_SOLDADOS_ACTIVOS AS
+SELECT s.id_soldado,
+       s.nombres_apellidos,
+       hm.estado_salud,
+       b.nombre_batallon
+FROM Soldado s
+JOIN Historial_Medico hm ON s.id_historial = hm.id_historial
+JOIN Batallon b ON s.id_batallon = b.id_batallon
+WHERE hm.estado_salud NOT IN ('Baja Medica', 'Fallecido');
+
+CREATE OR REPLACE VIEW INFO_ARMAMENTO_ACTIVO AS
+SELECT a.numero_serie,
+       a.estado_arma,
+       s.nombres_apellidos AS nombre_soldado
+FROM Armamento a
+LEFT JOIN Soldado s ON a.id_soldado = s.id_soldado
+WHERE a.estado_arma = 'Operativa';
+
+CREATE OR REPLACE VIEW INFO_MISIONES_ACTIVAS AS
+SELECT m.nombre_mision,
+       m.estado_mision,
+       am.rol_asignado,
+       s.nombres_apellidos AS nombre_soldado
+FROM Asignacion_Mision am
+JOIN Mision m ON am.id_mision = m.id_mision
+JOIN Soldado s ON am.id_soldado = s.id_soldado
+WHERE m.estado_mision = 'En Progreso';
